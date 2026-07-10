@@ -1,0 +1,345 @@
+// ============================================================
+// Thapar Campus Commerce — Prisma Schema
+// Database: PostgreSQL (Neon serverless)
+// ORM: Prisma
+// ============================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum OTPType {
+  EMAIL_VERIFY   // student registration
+  PHONE_VERIFY   // vendor registration
+  PASSWORD_RESET // forgot password
+}
+
+
+enum Role {
+  STUDENT
+  FACULTY
+  VENDOR
+  ADMIN
+}
+
+enum VendorCategory {
+  FOOD
+  BEVERAGES
+  OTHER
+}
+
+enum ItemType {
+  VEG
+  NON_VEG
+  BEVERAGE
+  SNACK
+  OTHER
+}
+
+enum OrderMode {
+  DELIVERY
+  DINE_IN
+  TAKEAWAY
+}
+
+enum OrderStatus {
+  PLACED
+  CONFIRMED
+  PREPARING
+  READY
+  PICKED_UP
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  UPI
+  CARD
+  NETBANKING
+  WALLET
+  CASH
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VendorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+// ============================================================
+// USER
+// All students, faculty, vendors, and admins share this table.
+// Role drives which dashboard/routes they can access.
+// ============================================================
+
+model User {
+  id          String   @id @default(uuid())
+  name        String
+  email       String?  @unique
+  // Only @thapar.edu emails allowed — enforced in NextAuth signIn callback
+  thaparId    String?  @unique @map("thapar_id") // e.g. "1020030405"
+  phone       String?
+  role        Role     @default(STUDENT)
+  avatarUrl   String?  @map("avatar_url")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  password    String?
+
+  // Relations
+  vendor Vendor?   @relation("VendorOwner")
+  orders       Order[]
+  cartItems    CartItem[]
+  sessions     Session[]
+
+  @@index([role])
+  @@map("users")
+}
+
+// ============================================================
+// SESSION
+// NextAuth session management
+// ============================================================
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ============================================================
+// HUB
+// A physical food court / zone on campus that groups vendors.
+// e.g. "COS", "Aahar", "G Block", "Jaggis"
+// ============================================================
+
+model Hub {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  imageUrl    String?  @map("image_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  vendors Vendor[]
+
+  @@map("hubs")
+}
+
+// ============================================================
+// VENDOR
+// Cafeterias, food stalls, shops on campus.
+// A vendor must be approved by admin before going live.
+// ============================================================
+
+model Vendor {
+  id               String         @id @default(uuid())
+  name             String
+  description      String?
+  location         String         // e.g. "Block C Ground Floor", "Main Canteen"
+  category         VendorCategory @default(FOOD)
+  imageUrl         String?        @map("image_url")
+  phone            String?
+  openTime         String?        @map("open_time")  // e.g. "08:00"
+  closeTime        String?        @map("close_time") // e.g. "22:00"
+  isActive         Boolean        @default(true) @map("is_active")
+  isApproved       Boolean        @default(false) @map("is_approved") // Admin must approve
+  totalOrders      Int            @default(0) @map("total_orders")
+  supportsDelivery Boolean        @default(false) @map("supports_delivery")
+  supportsDineIn   Boolean        @default(true) @map("supports_dine_in")
+  supportsTakeaway Boolean        @default(true) @map("supports_takeaway")
+
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  ownerId String @unique @map("owner_id")
+  hubId   String? @map("hub_id")
+
+  owner     User       @relation("VendorOwner", fields: [ownerId], references: [id])
+  hub       Hub?       @relation(fields: [hubId], references: [id])
+  menuItems MenuItem[]
+  orders    Order[]
+
+  @@index([hubId])
+  @@map("vendors")
+}
+
+// ============================================================
+// MENU ITEM
+// Individual items offered by a vendor.
+// unit_price is stored on OrderItem (not here) so price changes
+// don't affect historical orders.
+// ============================================================
+
+model MenuItem {
+  id             String         @id @default(uuid())
+  vendorId       String         @map("vendor_id")
+  name           String
+  description    String?
+  price          Decimal        @db.Decimal(10, 2)
+  imageUrl       String?        @map("image_url")
+  itemType       ItemType       @default(VEG) @map("item_type")
+  isAvailable    Boolean        @default(false) @map("is_available") // [~] default false per schema(1)
+  isPopular      Boolean        @default(false) @map("is_popular")
+  sortOrder      Int            @default(0) @map("sort_order")        // For custom menu ordering
+  approvalStatus ApprovalStatus @default(PENDING) @map("approval_status") // [~] added @map per schema(1)
+  adminNote      String?        @map("admin_note")                   // [+] rejection reason, from schema(1)
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  vendor     Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+  cartItems  CartItem[]
+
+  @@index([vendorId])
+  @@index([approvalStatus]) // [+] from schema(1)
+  @@map("menu_items")
+}
+
+// ============================================================
+// CART ITEM
+// Temporary — cleared when order is placed.
+// A user can only have one vendor's items in cart at a time
+// (enforced in application logic, not DB constraint).
+// ============================================================
+
+model CartItem {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  menuItemId String   @map("menu_item_id")
+  quantity   Int      @default(1)
+  addedAt    DateTime @default(now()) @map("added_at")
+
+  // Relations
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  // A user can only have one entry per menu item in cart
+  @@index([userId])
+  @@index([menuItemId])
+  @@unique([userId, menuItemId])
+  @@map("cart_items")
+}
+
+// ============================================================
+// ORDER
+// Created when user checks out from cart.
+// Tracks lifecycle from PLACED → PICKED_UP/DELIVERED or CANCELLED.
+// ============================================================
+
+model Order {
+  id               String      @id @default(uuid())
+  userId           String      @map("user_id")
+  vendorId         String      @map("vendor_id")
+  status           OrderStatus @default(PLACED)
+  orderMode        OrderMode   @default(TAKEAWAY) @map("order_mode") // [~] added default per schema(1)
+  deliveryLocation String?     @map("delivery_location")             // room/block — only for DELIVERY mode
+  totalAmount      Decimal     @db.Decimal(10, 2) @map("total_amount")
+  pickupSlot       String?     @map("pickup_slot")                   // e.g. "12:30 PM" — for scheduled pickup
+  note             String?                                           // Special instructions from student
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  user       User        @relation(fields: [userId], references: [id])
+  vendor     Vendor      @relation(fields: [vendorId], references: [id])
+  orderItems OrderItem[]
+  payment    Payment?
+
+  @@index([userId])
+  @@index([vendorId])
+  @@map("orders")
+}
+
+// ============================================================
+// ORDER ITEM
+// Junction table between Order and MenuItem.
+// unit_price captures the price AT TIME OF ORDER — critical.
+// ============================================================
+
+model OrderItem {
+  id         String  @id @default(uuid())
+  orderId    String  @map("order_id")
+  menuItemId String  @map("menu_item_id")
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(10, 2) @map("unit_price") // Snapshot of price at order time
+
+  // Relations
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@index([orderId])
+  @@index([menuItemId])
+  @@map("order_items")
+}
+
+// ============================================================
+// PAYMENT
+// One-to-one with Order.
+// Razorpay IDs stored here for webhook verification.
+// ============================================================
+
+model Payment {
+  id                String         @id @default(uuid())
+  orderId           String         @unique @map("order_id")
+  razorpayOrderId   String?        @unique @map("razorpay_order_id")   // From Razorpay order creation
+  razorpayPaymentId String?        @unique @map("razorpay_payment_id") // From Razorpay webhook
+  razorpaySignature String?        @map("razorpay_signature")          // For HMAC verification
+  status            PaymentStatus  @default(PENDING)
+  amount            Decimal        @db.Decimal(10, 2)
+  method            PaymentMethod?
+  paidAt            DateTime?      @map("paid_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+
+  // Relations
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("payments")
+}
+
+model OTP {
+  id        String   @id @default(uuid())
+  target    String   // email or phone number
+  code      String   // 6-digit OTP
+  type      OTPType
+  attempts  Int      @default(0)   // max 5 attempts
+  verified  Boolean  @default(false)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([target, type])
+  @@map("otps")
+}

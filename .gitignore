@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# testing
+coverage/
+
+# next.js
+.next/
+out/
+
+# production
+build/
+
+# misc
+.DS_Store
+*.pem
+
+# debug / logs
+*.log
+
+# local env files
+.env*.local
+.env
+
+# vercel
+.vercel
+
+# typescript
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# AI coding assistant config (not project code)
+.agents/
+skills-*.json
+
+# prisma
+prisma/migrations/migration_lock.toml

@@ -1,0 +1,40 @@
+# ============================================================
+# Keep-alive workflow
+# Pings the app every 4 minutes to prevent Neon database cold
+# starts. Runs on a cron schedule via GitHub Actions (free).
+#
+# Set PROD_URL as a GitHub Actions secret or repository variable
+# pointing to your production deployment URL
+# (e.g. https://your-app.vercel.app).
+# ============================================================
+
+name: Keep Database Alive
+
+on:
+  schedule:
+    # Every 4 minutes — before Neon's 5-minute idle timeout
+    - cron: "*/4 * * * *"
+  workflow_dispatch: # allow manual trigger for testing
+
+jobs:
+  ping:
+    name: Ping keep-alive endpoint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call keep-alive endpoint
+        run: |
+          if [ -z "${{ secrets.PROD_URL }}" ]; then
+            echo "❌ PROD_URL secret not set. Skipping."
+            exit 0
+          fi
+          echo "⏰ Pinging ${{ secrets.PROD_URL }}/api/keep-alive ..."
+          START=$(date +%s%N)
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}:%{time_total}" \
+            "${{ secrets.PROD_URL }}/api/keep-alive")
+          STATUS=$(echo "$RESPONSE" | cut -d: -f1)
+          TIME=$(echo "$RESPONSE" | cut -d: -f2)
+          END=$(date +%s%N)
+          echo "→ HTTP $STATUS (${TIME}s)"
+          if [ "$STATUS" != "200" ]; then
+            echo "⚠️  Keep-alive returned $STATUS"
+          fi
