@@ -1,6 +1,6 @@
 // ============================================================
 // app/layout.tsx
-// Root layout — wraps every page with SessionProvider + Navbar + ThemeProvider
+// Root layout — wraps every page with SessionProvider + ThemeProvider
 // ============================================================
 
 import type { Metadata, Viewport } from "next";
@@ -8,7 +8,6 @@ import "./globals.css";
 import { SessionProvider } from "@/components/shared/SessionProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { ThemeColorMeta } from "@/components/providers/ThemeColorMeta";
-import Navbar from "@/components/shared/Navbar";
 
 export const revalidate = 60;
 
@@ -31,7 +30,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <ThemeColorMeta />
           <SessionProvider>
-            <Navbar />
             {children}
           </SessionProvider>
         </ThemeProvider>
