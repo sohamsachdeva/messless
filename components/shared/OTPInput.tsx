@@ -15,9 +15,10 @@ export function OTPInput({ value, onChange, disabled, error }: OTPInputProps) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const digits = value.split("").concat(Array(6).fill("")).slice(0, 6);
 
-  // Demo mode — auto-fill 123456 in development
+  // Demo mode — auto-fill 123456 in development OR when NEXT_PUBLIC_DEMO_MODE is true
   useEffect(() => {
-    if (process.env.NODE_ENV !== "production" && !value) {
+    const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+    if ((process.env.NODE_ENV !== "production" || isDemo) && !value) {
       onChange("123456");
     }
   }, [value, onChange]);
