@@ -37,7 +37,9 @@ export async function createOTP(target: string, type: "EMAIL_VERIFY" | "PHONE_VE
   // Delete any existing OTPs for this target+type
   await prisma.oTP.deleteMany({ where: { target, type } });
 
-  const code = process.env.NODE_ENV === "production" ? generateOTP() : "123456"; // For dev, use a fixed OTP for easier testing
+  // Use fixed OTP "123456" in dev mode OR when NEXT_PUBLIC_DEMO_MODE is true (for pitch/college demo)
+  const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+  const code = (process.env.NODE_ENV !== "production" || isDemo) ? "123456" : generateOTP();
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
   await prisma.oTP.create({
@@ -93,9 +95,13 @@ export async function verifyOTP(
 // ── Send email OTP via Nodemailer ────────────────────────────
 // Install: npm install nodemailer @types/nodemailer
 export async function sendEmailOTP(email: string, otp: string, type: "verify" | "reset") {
-  if (process.env.NODE_ENV !== "production") {
-    console.log(`\n📧 DEV MODE — OTP for ${email}: ${otp}\n`);
-    return;  // ← skip actual email send
+  // Always log OTP so users can see it in dev or when SMTP is not configured
+  console.log(`\n📧 OTP for ${email}: ${otp}\n`);
+
+  // Skip actual email if SMTP credentials aren't configured
+  if (!process.env.SMTP_EMAIL || !process.env.SMTP_PASSWORD) {
+    console.log(`📧 SMTP not configured — OTP for ${email}: ${otp}`);
+    return;
   }
 
   const nodemailer = await import("nodemailer");
