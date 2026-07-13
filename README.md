@@ -333,5 +333,5 @@ This project is developed for Thapar Institute of Engineering & Technology. All 
 ---
 
 <p align="center">
-  Made with ❤️ by the Thapar student developer community
+  Made with ❤️ by Soham Sachdeva
 </p>
